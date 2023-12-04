@@ -1,7 +1,7 @@
 # Built by Akito
 # npub1wprtv89px7z2ut04vvquscpmyfuzvcxttwy2csvla5lvwyj807qqz5aqle
 
-FROM alpine:3.18.4 AS build
+FROM alpine:3.18.5 AS build
 
 ENV TZ=Europe/Amsterdam
 
@@ -33,7 +33,7 @@ RUN \
   && make setup-golpe \
   && make -j4
 
-FROM alpine:3.18.4
+FROM alpine:3.18.5
 
 WORKDIR /app
 
