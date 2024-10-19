@@ -218,7 +218,8 @@ struct Router {
     };
 
     std::string routerConfigFile;
-    uint64_t connectionTimeoutUs = 5'000'000;
+    const uint64_t defaultConnectionTimeoutUs = 20'000'000;
+    uint64_t connectionTimeoutUs = 0;
 
     WriterPipeline writer;
     Decompressor decomp;
@@ -312,6 +313,18 @@ struct Router {
                 for (auto &[groupName, streamGroup] : streamGroups) unneededGroups.insert(groupName);
                 for (const auto &[groupName, spec] : routerConfig.at("streams").get_object()) unneededGroups.erase(groupName);
                 for (const auto &groupName : unneededGroups) streamGroups.erase(groupName);
+            }
+
+            // connectionTimeout
+
+            uint64_t newTimeoutUs = defaultConnectionTimeoutUs;
+            if (routerConfig.get_object().contains("connectionTimeout")) {
+                newTimeoutUs = routerConfig.at("connectionTimeout").get_unsigned() * 1'000'000;
+            }
+
+            if (connectionTimeoutUs != newTimeoutUs) {
+                connectionTimeoutUs = newTimeoutUs;
+                LI << "Using connection timeout: " << (connectionTimeoutUs / 1'000'000) << " seconds";
             }
         } catch (std::exception &e) {
             LE << "Failed to parse router config: " << e.what();
