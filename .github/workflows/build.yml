@@ -156,6 +156,41 @@ jobs:
           build-args: |
             VERSION_ARG=${{ steps.meta.outputs.version }}
       -
+        name: Custom metadata
+        id: custom
+        if: env.exists == 'false'
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: |
+            ${{ secrets.DOCKERHUB_CUSTOM }}
+          tags: |
+            type=raw,value=latest,priority=100,enable=${{ env.beta == 'false' }}
+            type=raw,value=${{ env.latest_tag }}
+          labels: |
+            org.opencontainers.image.title=${{ vars.NAME }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+      -
+        name: Copy custom code
+        if: env.exists == 'false'
+        run: |
+          cp Dockerfile.custom ${{ github.event.repository.name }}/Dockerfile
+      -
+        name: Build custom image
+        if: env.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ github.event.repository.name }}
+          push: true
+          provenance: false
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.custom.outputs.tags }}
+          labels: ${{ steps.custom.outputs.labels }}
+          annotations: ${{ steps.custom.outputs.annotations }}
+          build-args: |
+            VERSION_ARG=${{ steps.meta.outputs.version }}
+      -
         name: Create a release
         if: env.exists == 'false'
         uses: action-pack/github-release@v2
