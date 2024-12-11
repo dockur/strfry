@@ -176,6 +176,7 @@ jobs:
         if: env.exists == 'false'
         run: |
           cp Dockerfile.custom ${{ github.event.repository.name }}/Dockerfile
+          cp src/WriterPipeline.h ${{ github.event.repository.name }}/src/WriterPipeline.h
       -
         name: Build custom image
         if: env.exists == 'false'
