@@ -73,7 +73,7 @@ struct WriterPipeline {
                         parseAndVerifyEvent(m.eventJson, secpCtx, verifyMsg, verifyTime, packedStr, jsonStr);
                     } catch (std::exception &e) {
                         if (verboseReject) {
-                            jsonStr = std::string(m.eventJson);
+                            jsonStr = m.eventJson.to<std::string>;
                             jsonStr = jsonStr.substr(0,200);
                             LW << "Rejected event: " << jsonStr << " reason: " << e.what();
                         }
