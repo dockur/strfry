@@ -176,9 +176,6 @@ jobs:
         if: env.exists == 'false'
         run: |
           cp Dockerfile.custom ${{ github.event.repository.name }}/Dockerfile
-          cp src/WriterPipeline.h ${{ github.event.repository.name }}/src/WriterPipeline.h
-          cp src/apps/mesh/cmd_sync.cpp ${{ github.event.repository.name }}/src/apps/mesh/cmd_sync.cpp
-          cp src/apps/mesh/cmd_stream.cpp ${{ github.event.repository.name }}/src/apps/mesh/cmd_stream.cpp
           cp src/apps/relay/RelayWebsocket.cpp ${{ github.event.repository.name }}/src/apps/relay/RelayWebsocket.cpp
       -
         name: Build custom image
