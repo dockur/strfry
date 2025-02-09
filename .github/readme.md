@@ -28,6 +28,7 @@ services:
     volumes:
         - ./strfry-db:/app/strfry-db
         - ./strfry.conf:/etc/strfry.conf
+    restart: always
 ```
 
 Via Docker CLI:
