@@ -7,8 +7,26 @@ set -Eeuo pipefail
 
 trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM EXIT
 
-if [ ! -f "/etc/strfry.conf" ]; then
-  cp /etc/strfry.conf.default /etc/strfry.conf
+config="/etc/strfry.conf"
+template="/etc/strfry.conf.default"
+
+# Check if config file is not a directory
+if [ -d "$config" ]; then
+
+    echo "The file $config does not exist, please check that you mapped it to a valid path!"
+    exit 1
+
+fi
+
+if [ ! -f "$config" ]; then
+
+  if [ ! -f "$template" ]; then
+    echo "Your /etc directory does not contain a valid strfry.conf file!"
+    exit 1
+  fi
+
+  cp "$template" "$config"
+
 fi
 
 cd /app
