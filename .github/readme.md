@@ -21,8 +21,8 @@ Via Docker Compose:
 ```yaml
 services:
   strfry:
-    container_name: strfry
     image: dockurr/strfry
+    container_name: strfry
     ports:
         - 7777:7777
     volumes:
