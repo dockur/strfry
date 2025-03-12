@@ -24,17 +24,18 @@ services:
     image: dockurr/strfry
     container_name: strfry
     ports:
-        - 7777:7777
+      - 7777:7777
     volumes:
-        - ./strfry-db:/app/strfry-db
-        - ./strfry.conf:/etc/strfry.conf
+      - ./strfry-db:/app/strfry-db
+      - ./strfry.conf:/etc/strfry.conf
     restart: always
+    stop_grace_period: 2m
 ```
 
 Via Docker CLI:
 
 ```bash
-docker run -it --rm -p 7777:7777 -v " ./strfry.conf:/etc/strfry.conf" dockurr/strfry
+docker run -it --rm --name strfry -p 7777:7777 -v ${PWD:-.}/strfry-db:/app/strfry-db -v ${PWD:-.}/strfry.conf:/etc/strfry.conf --stop-timeout 120 dockurr/strfry
 ```
 
 ## Stars 🌟
