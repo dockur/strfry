@@ -3,8 +3,9 @@ services:
     image: dockurr/strfry
     container_name: strfry
     ports:
-        - 7777:7777
+      - 7777:7777
     volumes:
-        - ./strfry-db:/app/strfry-db
-        - ./strfry.conf:/etc/strfry.conf
+      - ./strfry-db:/app/strfry-db
+      - ./strfry.conf:/etc/strfry.conf
     restart: always
+    stop_grace_period: 2m
