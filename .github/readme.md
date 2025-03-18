@@ -1,4 +1,4 @@
-<h1 align="center">strfry-docker<br />
+<h1 align="center">strfry<br />
 <div align="center">
 <a href="https://github.com/dockur/strfry"><img src="https://raw.githubusercontent.com/dockur/strfry/master/.github/logo.svg" title="Logo" style="max-width:100%;" width="128" /></a>
 </div>
@@ -16,7 +16,7 @@ Docker image of [strfry](https://github.com/hoytech/strfry), a relay for the [no
 
 ## Usage  🐳
 
-Via Docker Compose:
+##### Via Docker Compose:
 
 ```yaml
 services:
@@ -32,7 +32,7 @@ services:
     stop_grace_period: 2m
 ```
 
-Via Docker CLI:
+##### Via Docker CLI:
 
 ```bash
 docker run -it --rm --name strfry -p 7777:7777 -v ${PWD:-.}/strfry-db:/app/strfry-db -v ${PWD:-.}/strfry.conf:/etc/strfry.conf --stop-timeout 120 dockurr/strfry
