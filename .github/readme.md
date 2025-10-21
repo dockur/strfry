@@ -35,7 +35,7 @@ services:
 ##### Via Docker CLI:
 
 ```bash
-docker run -it --rm --name strfry -p 7777:7777 -v "${PWD:-.}/strfry-db:/app/strfry-db" -v "${PWD:-.}/strfry.conf:/etc/strfry.conf" --stop-timeout 120 dockurr/strfry
+docker run -it --rm --name strfry -p 7777:7777 -v "${PWD:-.}/strfry-db:/app/strfry-db" -v "${PWD:-.}/strfry.conf:/etc/strfry.conf" --stop-timeout 120 docker.io/dockurr/strfry
 ```
 
 ## Stars 🌟
