@@ -26,6 +26,7 @@ void RelayServer::runIngester(ThreadPool<MsgIngester>::Thread &thr) {
                         auto &cmd = jsonGetString(arr[0], "first element not a command like REQ");
 
                         if (cmd == "EVENT") {
+                            PROM_INC_CLIENT_MSG("EVENT");
                             if (cfg().relay__logging__dumpInEvents) LI << "[" << msg->connId << "] dumpInEvent: " << msg->payload; 
 
                             try {
@@ -36,14 +37,19 @@ void RelayServer::runIngester(ThreadPool<MsgIngester>::Thread &thr) {
                                 if (cfg().relay__logging__invalidEvents) LI << "Rejected invalid event: " << e.what();
                             }
                         } else if (cmd == "REQ") {
+                            PROM_INC_CLIENT_MSG("REQ");
                             if (cfg().relay__logging__dumpInReqs) LI << "[" << msg->connId << "] dumpInReq: " << msg->payload; 
 
+                            std::string subIdStr;
+
                             try {
-                                ingesterProcessReq(txn, msg->connId, arr);
+                                ingesterProcessReq(txn, msg->connId, arr, subIdStr);
                             } catch (std::exception &e) {
-                                sendNoticeError(msg->connId, std::string("bad req: ") + e.what());
+                                if (subIdStr.size()) sendClosedError(msg->connId, subIdStr, std::string("bad req: ") + e.what());
+                                else sendNoticeError(msg->connId, std::string("bad req: ") + e.what());
                             }
                         } else if (cmd == "CLOSE") {
+                            PROM_INC_CLIENT_MSG("CLOSE");
                             if (cfg().relay__logging__dumpInReqs) LI << "[" << msg->connId << "] dumpInReq: " << msg->payload; 
 
                             try {
@@ -52,6 +58,7 @@ void RelayServer::runIngester(ThreadPool<MsgIngester>::Thread &thr) {
                                 sendNoticeError(msg->connId, std::string("bad close: ") + e.what());
                             }
                         } else if (cmd.starts_with("NEG-")) {
+                            PROM_INC_CLIENT_MSG(std::string(cmd));
                             if (!cfg().relay__negentropy__enabled) throw herr("negentropy disabled");
 
                             try {
@@ -91,6 +98,9 @@ void RelayServer::ingesterProcessEvent(lmdb::txn &txn, uint64_t connId, std::str
     parseAndVerifyEvent(origJson, secpCtx, true, true, packedStr, jsonStr);
 
     PackedEventView packed(packedStr);
+    
+    // Track event kind metrics
+    PROM_INC_EVENT_KIND(std::to_string(packed.kind()));
 
     {
         bool foundProtected = false;
@@ -122,11 +132,12 @@ void RelayServer::ingesterProcessEvent(lmdb::txn &txn, uint64_t connId, std::str
     output.emplace_back(MsgWriter{MsgWriter::AddEvent{connId, std::move(ipAddr), std::move(packedStr), std::move(jsonStr)}});
 }
 
-void RelayServer::ingesterProcessReq(lmdb::txn &txn, uint64_t connId, const tao::json::value &arr) {
+void RelayServer::ingesterProcessReq(lmdb::txn &txn, uint64_t connId, const tao::json::value &arr, std::string &outSubIdStr) {
     if (arr.get_array().size() < 2 + 1) throw herr("arr too small");
+    outSubIdStr = jsonGetString(arr[1], "REQ subscription id was not a string");
     if (arr.get_array().size() > 2 + cfg().relay__maxReqFilterSize) throw herr("arr too big");
 
-    Subscription sub(connId, jsonGetString(arr[1], "REQ subscription id was not a string"), NostrFilterGroup(arr));
+    Subscription sub(connId, outSubIdStr, NostrFilterGroup(arr));
 
     tpReqWorker.dispatch(connId, MsgReqWorker{MsgReqWorker::NewSub{std::move(sub)}});
 }

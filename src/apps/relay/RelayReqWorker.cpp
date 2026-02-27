@@ -11,6 +11,7 @@ void RelayServer::runReqWorker(ThreadPool<MsgReqWorker>::Thread &thr) {
     };
 
     queries.onComplete = [&](lmdb::txn &, Subscription &sub){
+        PROM_INC_RELAY_MSG("EOSE");
         sendToConn(sub.connId, tao::json::to_string(tao::json::value::array({ "EOSE", sub.subId.str() })));
         tpReqMonitor.dispatch(sub.connId, MsgReqMonitor{MsgReqMonitor::NewSub{std::move(sub)}});
     };
