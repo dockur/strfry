@@ -176,7 +176,6 @@ jobs:
         if: env.exists == 'false'
         run: |
           cp Dockerfile.custom ${{ github.event.repository.name }}/Dockerfile
-          cp src/apps/relay/RelayWebsocket.cpp ${{ github.event.repository.name }}/src/apps/relay/RelayWebsocket.cpp
       -
         name: Build custom image
         if: env.exists == 'false'
