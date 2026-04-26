@@ -1,6 +1,6 @@
 name: ubuntu
 
-on: [workflow_dispatch]
+on: [push, pull_request]
 
 jobs:
   ubuntu:
@@ -8,7 +8,7 @@ jobs:
     name: A job to build and run strfry on Ubuntu
     steps:
       - name: Checkout strfry
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -34,7 +34,7 @@ jobs:
           echo "filename=$filename" >> $GITHUB_ENV
 
       - name: Upload strfry deb
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ env.filename }}
           path: ${{ env.filename }}
