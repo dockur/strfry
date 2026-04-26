@@ -1,17 +1,28 @@
 #include <pthread.h>
 #include <signal.h>
 
+#include <docopt.h>
+
 #include "RelayServer.h"
+
+
+static const char USAGE[] =
+R"(
+    Usage:
+      relay
+)";
 
 
 
 static void checkConfig() {
     if (cfg().relay__info__pubkey.size()) {
         try {
-            auto p = from_hex(cfg().relay__info__pubkey);
-            if (p.size() != 32) throw herr("bad size");
+            if (!cfg().relay__info__pubkey.starts_with("npub1")) {
+                auto p = from_hex(cfg().relay__info__pubkey);
+                if (p.size() != 32) throw herr("bad size");
+            }
         } catch (std::exception &e) {
-            LW << "Your relay.info.pubkey is incorrectly formatted. It should be 64 hex digits.";
+            LW << "Your relay.info.pubkey is incorrectly formatted. It should be an npub or 64 hex digits.";
         }
     }
 
@@ -22,6 +33,8 @@ static void checkConfig() {
 
 
 void cmd_relay(const std::vector<std::string> &subArgs) {
+    docopt::docopt(USAGE, subArgs, true, "");
+
     RelayServer s;
     s.run();
 }

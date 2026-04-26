@@ -2,6 +2,8 @@
 
 #include "golpe.h"
 
+#include "jsonParseUtils.h"
+
 
 struct FilterSetBytes {
     struct Item {
@@ -124,45 +126,84 @@ struct NostrFilter {
         if (!filterObj.is_object()) throw herr("provided filter is not an object");
 
         for (const auto &[k, v] : filterObj.get_object()) {
-            if (v.is_array() && v.get_array().size() == 0) {
-                neverMatch = true;
-                continue;
-            }
+            auto checkArray = [&]{
+                if (!v.is_array()) throw herr(k, " not an array");
+            };
 
             if (k == "ids") {
-                ids.emplace(v, true, 32, 32);
+                checkArray();
+                if (v.get_array().size() == 0) {
+                    neverMatch = true;
+                    continue;
+                }
                 numMajorFields++;
-            } else if (k == "authors") {
-                authors.emplace(v, true, 32, 32);
-                numMajorFields++;
-            } else if (k == "kinds") {
-                kinds.emplace(v);
-                numMajorFields++;
-            } else if (k.starts_with('#')) {
-                numMajorFields++;
-                if (k.size() == 2) {
-                    char tag = k[1];
 
-                    if (tag == 'p' || tag == 'e') {
-                        tags.emplace(tag, FilterSetBytes(v, true, 32, 32));
+                try {
+                    ids.emplace(v, true, 32, 32);
+                } catch (std::exception &e) {
+                    throw herr("error parsing ids: ", e.what());
+                }
+            } else if (k == "authors") {
+                checkArray();
+                if (v.get_array().size() == 0) {
+                    neverMatch = true;
+                    continue;
+                }
+                numMajorFields++;
+
+                try {
+                    authors.emplace(v, true, 32, 32);
+                } catch (std::exception &e) {
+                    throw herr("error parsing authors: ", e.what());
+                }
+            } else if (k == "kinds") {
+                checkArray();
+                if (v.get_array().size() == 0) {
+                    neverMatch = true;
+                    continue;
+                }
+                numMajorFields++;
+
+                try {
+                    kinds.emplace(v);
+                } catch (std::exception &e) {
+                    throw herr("error parsing kinds: ", e.what());
+                }
+            } else if (k.starts_with('#')) {
+                checkArray();
+                if (v.get_array().size() == 0) {
+                    neverMatch = true;
+                    continue;
+                }
+                numMajorFields++;
+
+                try {
+                    if (k.size() == 2) {
+                        char tag = k[1];
+
+                        if (tag == 'p' || tag == 'e') {
+                            tags.emplace(tag, FilterSetBytes(v, true, 32, 32));
+                        } else {
+                            tags.emplace(tag, FilterSetBytes(v, false, 0, MAX_INDEXED_TAG_VAL_SIZE));
+                        }
                     } else {
-                        tags.emplace(tag, FilterSetBytes(v, false, 0, MAX_INDEXED_TAG_VAL_SIZE));
+                        throw herr("unindexed tag filter");
                     }
-                } else {
-                    throw herr("unindexed tag filter");
+                } catch (std::exception &e) {
+                    throw herr("error parsing ", k, ": ", e.what());
                 }
             } else if (k == "since") {
-                since = v.get_unsigned();
+                since = jsonGetUnsigned(v, "error parsing since");
             } else if (k == "until") {
-                until = v.get_unsigned();
+                until = jsonGetUnsigned(v, "error parsing until");
             } else if (k == "limit") {
-                limit = v.get_unsigned();
+                limit = jsonGetUnsigned(v, "error parsing limit");
             } else {
-                throw herr("unrecognised filter item");
+                throw herr("unrecognised filter item: ", k);
             }
         }
 
-        if (tags.size() > 3) throw herr("too many tags in filter"); // O(N^2) in matching, just prohibit it
+        if (tags.size() > cfg().relay__maxTagsPerFilter) throw herr("too many tags in filter"); // O(N^2) in matching, so prevent it from being too large
 
         if (limit > maxFilterLimit) limit = maxFilterLimit;
 
@@ -211,30 +252,32 @@ struct NostrFilterGroup {
 
     NostrFilterGroup() {}
 
-    // Note that this expects the full array, so the first two items are "REQ" and the subId
-    NostrFilterGroup(const tao::json::value &req, uint64_t maxFilterLimit = cfg().relay__maxFilterLimit) {
-        const auto &arr = req.get_array();
-        if (arr.size() < 3) throw herr("too small");
-
-        for (size_t i = 2; i < arr.size(); i++) {
-            filters.emplace_back(arr[i], maxFilterLimit);
-            if (filters.back().neverMatch) filters.pop_back();
+    NostrFilterGroup(const tao::json::value &filter, uint64_t maxFilterLimit = cfg().relay__maxFilterLimit) {
+        if (!filter.is_array()) {
+            addFilter(filter, maxFilterLimit);
+        } else {
+            for (const auto &e : filter.get_array()) {
+                addFilter(e, maxFilterLimit);
+            }
         }
     }
 
-    // FIXME refactor: Make unwrapped the default constructor
-    static NostrFilterGroup unwrapped(tao::json::value filter, uint64_t maxFilterLimit = cfg().relay__maxFilterLimit) {
-        if (!filter.is_array()) {
-            filter = tao::json::value::array({ filter });
+    static NostrFilterGroup fromReq(const tao::json::value &req, uint64_t maxFilterLimit = cfg().relay__maxFilterLimit) {
+        const auto &arr = req.get_array();
+        if (arr.size() < 3) throw herr("too small");
+
+        NostrFilterGroup fg;
+
+        for (size_t i = 2; i < arr.size(); i++) {
+            fg.addFilter(arr[i], maxFilterLimit);
         }
 
-        tao::json::value pretendReqQuery = tao::json::value::array({ "REQ", "junkSub" });
+        return fg;
+    }
 
-        for (auto &e : filter.get_array()) {
-            pretendReqQuery.push_back(e);
-        }
-
-        return NostrFilterGroup(pretendReqQuery, maxFilterLimit);
+    void addFilter(const tao::json::value &filterItem, uint64_t maxFilterLimit) {
+        filters.emplace_back(filterItem, maxFilterLimit);
+        if (filters.back().neverMatch) filters.pop_back();
     }
 
     bool doesMatch(PackedEventView ev) const {
@@ -251,5 +294,82 @@ struct NostrFilterGroup {
 
     bool isFullDbQuery() {
         return size() == 1 && filters[0].isFullDbQuery();
+    }
+};
+
+struct FilterValidator {
+    uint64_t configVer = 0;
+    flat_hash_set<uint64_t> allowedKinds;
+
+    void setupValidator() {
+        allowedKinds.clear();
+
+        std::string allowedKindsStr = cfg().relay__filterValidation__allowedKinds;
+
+        if (!allowedKindsStr.empty()) {
+            size_t pos = 0;
+            while (pos < allowedKindsStr.size()) {
+                size_t nextComma = allowedKindsStr.find(',', pos);
+                if (nextComma == std::string::npos) nextComma = allowedKindsStr.size();
+
+                std::string kindStr = allowedKindsStr.substr(pos, nextComma - pos);
+                size_t start = kindStr.find_first_not_of(" \t");
+                size_t end = kindStr.find_last_not_of(" \t");
+                if (start != std::string::npos && end != std::string::npos) {
+                    kindStr = kindStr.substr(start, end - start + 1);
+                    if (!kindStr.empty()) allowedKinds.insert(std::stoull(kindStr));
+                }
+
+                pos = nextComma + 1;
+            }
+        }
+    }
+
+    void validate(const NostrFilterGroup &fg) {
+        if (!cfg().relay__filterValidation__enabled) return;
+
+        if (configVer != cfg().version()) setupValidator();
+
+        size_t numFilters = fg.filters.size();
+        if (numFilters < cfg().relay__filterValidation__minFiltersPerReq ||
+            numFilters > cfg().relay__filterValidation__maxFiltersPerReq) {
+            throw herr("invalid number of filters: ", numFilters);
+        }
+
+        for (const auto &filter : fg.filters) {
+            if (filter.kinds) {
+                size_t numKinds = filter.kinds->size();
+                if (numKinds > cfg().relay__filterValidation__maxKindsPerFilter) {
+                    throw herr("too many kinds in filter: ", numKinds);
+                }
+
+                if (!allowedKinds.empty()) {
+                    for (size_t i = 0; i < numKinds; i++) {
+                        uint64_t kind = filter.kinds->at(i);
+                        if (!allowedKinds.contains(kind)) throw herr("kind not allowed: ", kind);
+                    }
+                }
+            }
+
+            if (cfg().relay__filterValidation__requireAuthorOrTag) {
+                bool hasValidAuthor = filter.authors && filter.authors->size() == 1;
+                bool hasValidPTag = false;
+                bool hasValidETag = false;
+
+                auto pTagIt = filter.tags.find('p');
+                if (pTagIt != filter.tags.end()) {
+                    hasValidPTag = pTagIt->second.size() == 1;
+                }
+
+                auto eTagIt = filter.tags.find('e');
+                if (eTagIt != filter.tags.end()) {
+                    hasValidETag = eTagIt->second.size() == 1;
+                }
+
+                if (!hasValidAuthor && !hasValidPTag && !hasValidETag) {
+                    throw herr("filter must have exactly one author, p tag, or e tag");
+                }
+            }
+        }
     }
 };

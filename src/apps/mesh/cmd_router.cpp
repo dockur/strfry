@@ -41,6 +41,13 @@ struct RouterEvent : NonCopyable {
 struct ConnDesignator {
     std::string groupName;
     std::string url;
+
+    struct Stats {
+        uint64_t bytesUp = 0;
+        uint64_t bytesUpCompressed = 0;
+        uint64_t bytesDown = 0;
+        uint64_t bytesDownCompressed = 0;
+    } stats;
 };
 
 
@@ -97,7 +104,7 @@ struct Router {
                 if (newFilterStr != filterStr) needsReconnect = true;
 
                 filterStr = newFilterStr;
-                filterCompiled = NostrFilterGroup::unwrapped(newFilter);
+                filterCompiled = NostrFilterGroup(newFilter);
                 filter = newFilter;
             }
 
@@ -164,7 +171,11 @@ struct Router {
                 filterToSend["limit"] = 0;
 
                 auto msg = tao::json::to_string(tao::json::value::array({ "REQ", "X", filterToSend }));
-                ws->send(msg.data(), msg.size(), uWS::OpCode::TEXT, nullptr, nullptr, true);
+                size_t compressedSize;
+                ws->send(msg.data(), msg.size(), uWS::OpCode::TEXT, nullptr, nullptr, true, &compressedSize);
+                auto *desig = (ConnDesignator*) ws->getUserData();
+                desig->stats.bytesUp += msg.size();
+                desig->stats.bytesUpCompressed += compressedSize;
             }
         }
 
@@ -183,7 +194,7 @@ struct Router {
 
             std::string okMsg;
 
-            auto res = pluginDown.acceptEvent(pluginDownCmd, evJson, EventSourceType::Stream, url, okMsg);
+            auto res = pluginDown.acceptEvent(pluginDownCmd, evJson, EventSourceType::Stream, url, Bytes32(), okMsg);
             if (res == PluginEventSifterResult::Accept) {
                 router->writer.write({ std::move(evJson), });
             } else {
@@ -206,10 +217,16 @@ struct Router {
 
             std::string okMsg;
 
-            auto res = pluginUp.acceptEvent(pluginUpCmd, evJson, EventSourceType::Stored, "", okMsg);
+            auto res = pluginUp.acceptEvent(pluginUpCmd, evJson, EventSourceType::Stored, "", Bytes32(), okMsg);
             if (res == PluginEventSifterResult::Accept) {
                 for (auto &[url, c] : conns) {
-                    if (c.ws) c.ws->send(responseStr.data(), responseStr.size(), uWS::OpCode::TEXT, nullptr, nullptr, true);
+                    if (c.ws) {
+                        size_t compressedSize;
+                        c.ws->send(responseStr.data(), responseStr.size(), uWS::OpCode::TEXT, nullptr, nullptr, true, &compressedSize);
+                        auto *desig = (ConnDesignator*) c.ws->getUserData();
+                        desig->stats.bytesUp += responseStr.size();
+                        desig->stats.bytesUpCompressed += compressedSize;
+                    }
                 }
             } else {
                 if (okMsg.size()) LI << groupName << " : pluginUp blocked event " << evJson.at("id").get_string() << ": " << okMsg;
@@ -220,6 +237,8 @@ struct Router {
     std::string routerConfigFile;
     const uint64_t defaultConnectionTimeoutUs = 20'000'000;
     uint64_t connectionTimeoutUs = 0;
+    bool defaultVerbose = true;
+    bool verbose = true;
 
     WriterPipeline writer;
     Decompressor decomp;
@@ -234,6 +253,9 @@ struct Router {
 
 
     Router(std::string routerConfigFile) : routerConfigFile(routerConfigFile) {
+        writer.verboseReject = [&]{ return verbose; };
+        writer.verboseCommit = [&]{ return verbose; };
+
         {
             auto txn = env.txn_ro();
             currEventId = getMostRecentLevId(txn);
@@ -256,7 +278,14 @@ struct Router {
 
         hubGroup->onDisconnection([&](uWS::WebSocket<uWS::CLIENT> *ws, int code, char *message, size_t length) {
             auto *desig = (ConnDesignator*) ws->getUserData();
-            LI << desig->groupName << ": Disconnected from " << desig->url;
+
+            auto &st = desig->stats;
+            auto upComp = renderPercent(st.bytesUp ? 1.0 - (double)st.bytesUpCompressed / st.bytesUp : 0);
+            auto downComp = renderPercent(st.bytesDown ? 1.0 - (double)st.bytesDownCompressed / st.bytesDown : 0);
+
+            LI << desig->groupName << ": Disconnected from " << desig->url
+               << " UP: " << renderSize(st.bytesUp) << " (" << upComp << " compressed)"
+               << " DN: " << renderSize(st.bytesDown) << " (" << downComp << " compressed)";
 
             if (streamGroups.contains(desig->groupName)) {
                 streamGroups.at(desig->groupName).connClose(desig->url, ws);
@@ -272,8 +301,10 @@ struct Router {
             delete desig;
         });
 
-        hubGroup->onMessage2([&](uWS::WebSocket<uWS::CLIENT> *ws, char *message, size_t length, uWS::OpCode, size_t) {
+        hubGroup->onMessage2([&](uWS::WebSocket<uWS::CLIENT> *ws, char *message, size_t length, uWS::OpCode, size_t compressedSize) {
             auto *desig = (ConnDesignator*) ws->getUserData();
+            desig->stats.bytesDown += length;
+            desig->stats.bytesDownCompressed += compressedSize;
 
             if (!streamGroups.contains(desig->groupName)) {
                 ws->close();
@@ -308,6 +339,18 @@ struct Router {
                 connectionTimeoutUs = newTimeoutUs;
                 LI << "Using connection timeout: " << (connectionTimeoutUs / 1'000'000) << " seconds";
                 // FIXME: this won't actually update the cron.repeat() frequency, so no hot reconfigs
+            }
+
+            // verbose
+
+            bool newVerbose = defaultVerbose;
+            if (routerConfig.get_object().contains("verbose")) {
+                newVerbose = routerConfig.at("verbose").get_boolean();
+            }
+
+            if (verbose != newVerbose) {
+                verbose = newVerbose;
+                LI << "Verbose mode: " << (verbose ? "true" : "false");
             }
 
             // load streamGroups

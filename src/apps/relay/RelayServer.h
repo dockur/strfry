@@ -7,6 +7,7 @@
 #include <hoytech/time.h>
 #include <hoytech/hex.h>
 #include <hoytech/file_change_monitor.h>
+#include <SessionToken.h>
 #include <uWebSockets/src/uWS.h>
 #include <tao/json.hpp>
 
@@ -69,6 +70,7 @@ struct MsgWriter : NonCopyable {
         std::string ipAddr;
         std::string packedStr;
         std::string jsonStr;
+        Bytes32 authed;
     };
 
     struct CloseConn {
@@ -148,6 +150,30 @@ struct MsgNegentropy : NonCopyable {
     MsgNegentropy(Var &&msg_) : msg(std::move(msg_)) {}
 };
 
+struct AuthStatus {
+    char challenge[22];
+    Bytes32 authed;
+
+    AuthStatus(std::string_view c) {
+        if (c.size() != 22) throw herr("challenge size not 22 bytes");
+        ::memcpy(challenge, c.data(), 22);
+    }
+
+    std::string_view challengeSv() const {
+        return std::string_view(challenge, sizeof(challenge));
+    }
+
+    bool isAuthed() const {
+        return !authed.isNull();
+    }
+};
+
+struct RelayServerCtx {
+    secp256k1_context *secpCtx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+    FilterValidator filterValidator;
+    SessionToken::Generator challengeGenerator;
+    flat_hash_map<uint64_t, AuthStatus> connIdToAuthStatus;
+};
 
 struct RelayServer {
     uS::Async *hubTrigger = nullptr;
@@ -168,10 +194,12 @@ struct RelayServer {
     void runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr);
 
     void runIngester(ThreadPool<MsgIngester>::Thread &thr);
-    void ingesterProcessEvent(lmdb::txn &txn, uint64_t connId, std::string ipAddr, secp256k1_context *secpCtx, const tao::json::value &origJson, std::vector<MsgWriter> &output);
-    void ingesterProcessReq(lmdb::txn &txn, uint64_t connId, const tao::json::value &origJson, bool counOnly, std::string &outSubIdStr);
-    void ingesterProcessClose(lmdb::txn &txn, uint64_t connId, const tao::json::value &origJson);
-    void ingesterProcessNegentropy(lmdb::txn &txn, Decompressor &decomp, uint64_t connId, const tao::json::value &origJson);
+    void ingesterProcessEvent(lmdb::txn &txn, uint64_t connId, flat_hash_map<uint64_t, AuthStatus*> &connIdToAuthStatus, std::string ipAddr, secp256k1_context *secpCtx, const tao::json::value &origJson, std::vector<MsgWriter> &output);
+    void ingesterProcessEvent(lmdb::txn &txn, RelayServerCtx &rsctx, uint64_t connId, std::string ipAddr, const tao::json::value &origJson, std::vector<MsgWriter> &output);
+    void ingesterProcessReq(lmdb::txn &txn, RelayServerCtx &rsctx, uint64_t connId, const tao::json::value &arr, bool countOnly, std::string &outSubIdStr);
+    void ingesterProcessClose(lmdb::txn &txn, uint64_t connId, const tao::json::value &arr);
+    void ingesterProcessAuth(RelayServerCtx &rsctx, uint64_t connId, const tao::json::value &eventJson);
+    void ingesterProcessNegentropy(lmdb::txn &txn, uint64_t connId, const tao::json::value &origJson);
 
     void runWriter(ThreadPool<MsgWriter>::Thread &thr);
 
@@ -237,6 +265,13 @@ struct RelayServer {
     void sendOKResponse(uint64_t connId, std::string_view eventIdHex, bool written, std::string_view message) {
         PROM_INC_RELAY_MSG("OK");
         auto reply = tao::json::value::array({ "OK", eventIdHex, written, message });
+        tpWebsocket.dispatch(0, MsgWebsocket{MsgWebsocket::Send{connId, std::move(tao::json::to_string(reply))}});
+        hubTrigger->send();
+    }
+
+    void sendAuthChallenge(uint64_t connId, std::string_view challenge) {
+        PROM_INC_RELAY_MSG("AUTH");
+        auto reply = tao::json::value::array({ "AUTH", challenge });
         tpWebsocket.dispatch(0, MsgWebsocket{MsgWebsocket::Send{connId, std::move(tao::json::to_string(reply))}});
         hubTrigger->send();
     }

@@ -15,6 +15,13 @@ config:
     desc: "HTTP header that contains the client's real IP, before reverse proxying (ie x-real-ip) (MUST be all lower-case)"
     default: ""
 
+  - name: relay__auth__enabled
+    desc: "Enable NIP-42 authentication"
+    default: true
+  - name: relay__auth__serviceUrl
+    desc: "External relay URL (beginning with wss://). Required in order to validate challenge responses."
+    default: ""
+
   - name: relay__info__name
     desc: "NIP-11: Name of this server. Short/descriptive (< 30 characters)"
     default: "strfry default"
@@ -22,10 +29,10 @@ config:
     desc: "NIP-11: Detailed information about relay, free-form"
     default: "This is a strfry instance."
   - name: relay__info__pubkey
-    desc: "NIP-11: Administrative nostr pubkey (in 32-byte HEX format), for contact purposes"
+    desc: "NIP-11: Administrative nostr pubkey (in npub or 32-byte HEX format), for contact purposes"
     default: ""
   - name: relay__info__self
-    desc: "NIP-11: Relay's own pubkey"
+    desc: "NIP-11: Relay's own pubkey (in npub or 32-byte HEX format)"
     default: ""
   - name: relay__info__contact
     desc: "NIP-11: Alternative administrative contact (email, website, etc)"
@@ -66,6 +73,9 @@ config:
   - name: relay__maxFilterLimit
     desc: "Maximum records that can be returned per filter"
     default: 500
+  - name: relay__maxTagsPerFilter
+    desc: "Maximum number of tag filters allowed per filter (O(N^2) in matching, so keep it small)"
+    default: 3
   - name: relay__maxFilterLimitCount
     desc: "Maximum records that can be counted by a COUNT request (set 0 to disable COUNT)"
     default: 1000000
@@ -76,6 +86,9 @@ config:
   - name: relay__writePolicy__plugin
     desc: "If non-empty, path to an executable script that implements the writePolicy plugin logic"
     default: ""
+  - name: relay__writePolicy__timeoutSeconds
+    desc: "Number of seconds to wait for a plugin to respond"
+    default: 10
 
   - name: relay__compression__enabled
     desc: "Use permessage-deflate compression if supported by client. Reduces bandwidth, but slight increase in CPU"
@@ -125,3 +138,22 @@ config:
   - name: relay__negentropy__maxSyncEvents
     desc: "Maximum records that sync will process before returning an error"
     default: 1000000
+
+  - name: relay__filterValidation__enabled
+    desc: "Enable strict filter validation for REQ messages"
+    default: false
+  - name: relay__filterValidation__maxFiltersPerReq
+    desc: "Maximum number of filters allowed per REQ (when validation enabled)"
+    default: 3
+  - name: relay__filterValidation__minFiltersPerReq
+    desc: "Minimum number of filters required per REQ (when validation enabled)"
+    default: 1
+  - name: relay__filterValidation__maxKindsPerFilter
+    desc: "Maximum number of kinds allowed per filter (when validation enabled)"
+    default: 3
+  - name: relay__filterValidation__allowedKinds
+    desc: "Comma-separated list of allowed kinds (empty = all allowed)"
+    default: ""
+  - name: relay__filterValidation__requireAuthorOrTag
+    desc: "Require at least one author, p tag, or e tag in each filter"
+    default: false

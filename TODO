@@ -1,12 +1,14 @@
-features
-  NIP-42 AUTH
-  archival mode (no deleting of events)
+! update docs
+
+PRs
+  ? NIP-91 AND filters
+
+possible features
+  HyperLogLog support in COUNT, as per NIP-45
   asynchronous plugins (multiple in flight at once)
   slow-websocket connection detection and back-pressure
   in sync/stream, log bytes up/down and compression ratios
-  ? NIP-45 COUNT
-  ? less verbose default logging
-  ? kill plugin if it times out
+  archival mode (no deleting of events)
 
 rate limits (maybe not needed now that we have plugins?)
   event writes per second per ip
@@ -19,4 +21,3 @@ rate limits (maybe not needed now that we have plugins?)
 
 misc
   ? periodic reaping of disconnected sockets (maybe autoping is doing this already)
-  ? warn when run as root

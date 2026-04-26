@@ -39,6 +39,9 @@ void cmd_stream(const std::vector<std::string> &subArgs) {
     PluginEventSifter writePolicyPlugin;
 
 
+    LW << "'strfry stream' is deprecated. Please use 'strfry router' instead.";
+
+
     ws.onConnect = [&]{
         if (dir == "down" || dir == "both") {
             auto encoded = tao::json::to_string(tao::json::value::array({ "REQ", "sub", tao::json::value({ { "limit", 0 } }) }));
@@ -68,7 +71,7 @@ void cmd_stream(const std::vector<std::string> &subArgs) {
                     auto &evJson = origJson.at(2);
 
                     std::string okMsg;
-                    auto res = writePolicyPlugin.acceptEvent(cfg().relay__writePolicy__plugin, evJson, EventSourceType::Stream, url, okMsg);
+                    auto res = writePolicyPlugin.acceptEvent(cfg().relay__writePolicy__plugin, evJson, EventSourceType::Stream, url, Bytes32(), okMsg);
                     if (res == PluginEventSifterResult::Accept) {
                         downloadedIds.emplace(from_hex(evJson.at("id").get_string()));
                         writer.write({ std::move(evJson), });

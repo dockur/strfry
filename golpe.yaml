@@ -10,7 +10,10 @@ features:
     templar: true
 
 includes: |
+    #include "golpe.h"
+    #include "global.h"
     #include "PackedEvent.h"
+    #include "EventUtils.h"
 
 tables:
   ## DB meta-data. Single entry, with id = 1
@@ -46,6 +49,8 @@ tables:
         multi: true
       replace: # pubkey, d-tag, kind
         multi: true
+      replaceDeletion: # hash(a-tag), created_at
+        multi: true
 
     indexPrelude: |
         PackedEventView packed(v.buf);
@@ -62,8 +67,21 @@ tables:
 
             if (tagName == 'd' && replace.size() == 0) {
                 replace.push_back(makeKey_StringUint64(std::string(packed.pubkey()) + std::string(tagVal), packed.kind()));
-            } else if (tagName == 'e' && packed.kind() == 5) {
-                deletion.push_back(std::string(tagVal) + std::string(packed.pubkey()));
+            } else if (tagName == 'e') {
+                if (packed.kind() == 5) {
+                    deletion.push_back(std::string(tagVal) + std::string(packed.pubkey()));
+                }
+            } else if (tagName == 'a') {
+                if (packed.kind() == 5) {
+                    try { // parseATag can fail
+                        auto [kind, pubkey, dTag] = parseATag(tagVal);
+
+                        if (isParamReplaceableKind(kind) && pubkey == packed.pubkey()) {
+                            replaceDeletion.push_back(makeKey_StringUint64(sha256(tagVal).sv(), packed.created_at()));
+                        }
+                    } catch(...) {
+                    }
+                }
             }
 
             return true;

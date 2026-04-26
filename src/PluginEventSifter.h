@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <spawn.h>
 #include <unistd.h>
-#include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -12,6 +11,8 @@
 #include <signal.h>
 
 #include <memory>
+
+#include "hoytech/stream.h"
 
 #include "golpe.h"
 
@@ -33,15 +34,14 @@ enum class PluginEventSifterResult {
 struct PluginEventSifter {
     struct RunningPlugin {
         pid_t pid;
+        hoytech::StreamReader streamReader;
+        hoytech::StreamWriter streamWriter;
         std::string currPluginCmd;
         struct timespec lastModTime;
-        FILE *r;
-        FILE *w;
 
-        RunningPlugin(pid_t pid, int rfd, int wfd, std::string currPluginCmd) : pid(pid), currPluginCmd(currPluginCmd) {
-            r = fdopen(rfd, "r");
-            w = fdopen(wfd, "w");
-            setlinebuf(w);
+        RunningPlugin(pid_t pid, int rfd, int wfd, std::string currPluginCmd) : pid(pid), streamReader(rfd), streamWriter(wfd), currPluginCmd(currPluginCmd) {
+            streamReader.setMaxRecordSize(8192);
+
             if (currPluginCmd.find(' ') == std::string::npos) {
                 struct stat statbuf;
                 if (stat(currPluginCmd.c_str(), &statbuf)) throw herr("couldn't stat plugin: ", currPluginCmd);
@@ -50,16 +50,14 @@ struct PluginEventSifter {
         }
 
         ~RunningPlugin() {
-            fclose(r);
-            fclose(w);
-            kill(pid, SIGTERM);
-            waitpid(pid, nullptr, 0);
+            ::kill(pid, SIGTERM);
+            ::waitpid(pid, nullptr, 0);
         }
     };
 
     std::unique_ptr<RunningPlugin> running; 
 
-    PluginEventSifterResult acceptEvent(const std::string &pluginCmd, const tao::json::value &evJson, EventSourceType sourceType, std::string_view sourceInfo, std::string &okMsg) {
+    PluginEventSifterResult acceptEvent(const std::string &pluginCmd, const tao::json::value &evJson, EventSourceType sourceType, std::string_view sourceInfo, const Bytes32 &authed, std::string &okMsg) {
         if (pluginCmd.size() == 0) {
             running.reset();
             return PluginEventSifterResult::Accept;
@@ -90,21 +88,32 @@ struct PluginEventSifter {
                 { "sourceInfo", sourceType == EventSourceType::IP4 || sourceType == EventSourceType::IP6 ? renderIP(sourceInfo) : sourceInfo },
             });
 
+            if (!authed.isNull()) request["authed"] = to_hex(authed.sv());
+
             std::string output = tao::json::to_string(request);
             output += "\n";
 
-            if (::fwrite(output.data(), 1, output.size(), running->w) != output.size()) throw herr("error writing to plugin");
+            try {
+                running->streamWriter.write(output, cfg().relay__writePolicy__timeoutSeconds * 1'000);
+            } catch (std::exception &e) {
+                throw herr("Failed to write event: ", e.what(), ". Request was: ", output);
+            }
 
             tao::json::value response;
 
             while (1) {
-                char buf[8192];
-                if (!fgets(buf, sizeof(buf), running->r)) throw herr("pipe to plugin was closed (plugin crashed?)");
+                std::string line;
 
                 try {
-                    response = tao::json::from_string(buf);
+                    line = running->streamReader.read(cfg().relay__writePolicy__timeoutSeconds * 1'000);
                 } catch (std::exception &e) {
-                    LW << "Got unparseable line from write policy plugin: " << buf;
+                    throw herr("Failed to read response: ", e.what(), ". Request was: ", output);
+                }
+
+                try {
+                    response = tao::json::from_string(line);
+                } catch (std::exception &e) {
+                    LW << "Got unparseable line from write policy plugin: " << line;
                     continue;
                 }
 
@@ -121,13 +130,12 @@ struct PluginEventSifter {
             else if (action == "shadowReject") return PluginEventSifterResult::ShadowReject;
             else throw herr("unknown action: ", action);
         } catch (std::exception &e) {
-            LE << "Couldn't setup plugin: " << e.what();
+            LE << "Plugin error: " << e.what();
             running.reset();
             okMsg = "error: internal error";
             return PluginEventSifterResult::Reject;
         }
     }
-
 
 
     struct Pipe : NonCopyable {
@@ -147,7 +155,7 @@ struct PluginEventSifter {
             if (fds[1] != -1) ::close(fds[1]);
         }
 
-        int saveFd(int offset) {
+        int extractFd(int offset) {
             int fd = fds[offset];
             fds[offset] = -1;
             return fd;
@@ -179,6 +187,6 @@ struct PluginEventSifter {
         auto ret = posix_spawnp(&pid, "sh", &file_actions, nullptr, (char* const*)(&argv[0]), environ);
         if (ret) throw herr("posix_spawn failed to invoke '", pluginCmd, "': ", strerror(errno));
 
-        running = make_unique<RunningPlugin>(pid, inPipe.saveFd(0), outPipe.saveFd(1), pluginCmd);
+        running = make_unique<RunningPlugin>(pid, inPipe.extractFd(0), outPipe.extractFd(1), pluginCmd);
     }
 };
