@@ -3,6 +3,8 @@
 #include "StrfryTemplates.h"
 #include "app_git_version.h"
 #include "Favicon.h"
+#include "Bech32Utils.h"
+#include "PrometheusMetrics.h"
 
 
 
@@ -19,7 +21,9 @@ static std::string preGenerateHttpResponse(const std::string &contentType, const
     return output;
 };
 
+
 static std::string preGenerateHttpRedirect(const std::string &location, const std::string &contentType, const std::string &content) {
+
     std::string output = "HTTP/1.1 301 Moved Permanently\r\n";
     output += std::string("Content-Type: ") + contentType + "\r\n";
     output += "Access-Control-Allow-Origin: *\r\n";
@@ -32,6 +36,7 @@ static std::string preGenerateHttpRedirect(const std::string &location, const st
     return output;
 };
 
+
 void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
     struct Connection {
         uWS::WebSocket<uWS::SERVER> *websocket;
@@ -43,6 +48,10 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
             uint64_t bytesUpCompressed = 0;
             uint64_t bytesDown = 0;
             uint64_t bytesDownCompressed = 0;
+            // Application bytes handed to uWS that have not yet been fully drained
+            // to the kernel (either still queued in uWS or in-flight in a partial
+            // send). Useful for diagnosing slow or stalled clients.
+            uint64_t pendingOutbound = 0;
         } stats;
 
         Connection(uWS::WebSocket<uWS::SERVER> *p, uint64_t connId_)
@@ -56,13 +65,21 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
     flat_hash_map<uint64_t, Connection*> connIdToConnection;
     uint64_t nextConnectionId = 1;
     bool gracefulShutdown = false;
+    uint64_t serverStart = ::time(nullptr);
 
     std::string tempBuf;
     tempBuf.reserve(cfg().events__maxEventSize + MAX_SUBID_SIZE + 100);
 
 
     auto supportedNips = []{
-        tao::json::value output = tao::json::value::array({ 1, 2, 4, 9, 11, 22, 28, 40, 45, 70, 77 });
+        tao::json::value output = tao::json::value::array({ 1, 2, 4, 9, 11, 28, 40, 70 });
+
+        if (cfg().relay__auth__enabled && cfg().relay__auth__serviceUrl.size() > 0) output.push_back(42);
+        if (cfg().relay__maxFilterLimitCount > 0) output.push_back(45);
+        if (cfg().relay__negentropy__enabled) output.push_back(77);
+
+        std::sort(output.get_array().begin(), output.get_array().end());
+
         if (cfg().relay__info__nips.size() == 0) return output;
 
         try {
@@ -78,6 +95,14 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
 
     auto getServerInfoHttpResponse = [&supportedNips, ver = uint64_t(0), rendered = std::string("")]() mutable {
         if (ver != cfg().version()) {
+            auto maybeNpub = [](std::string_view sv){
+                if (sv.starts_with("npub1")) {
+                    return to_hex(decodeBech32Simple(sv));
+                } else {
+                    return std::string(sv);
+                }
+            };
+
             tao::json::value nip11 = tao::json::value({
                 { "supported_nips", supportedNips() },
                 { "software", "git+https://github.com/hoytech/strfry.git" },
@@ -93,10 +118,10 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
             if (cfg().relay__info__name.size()) nip11["name"] = cfg().relay__info__name;
             if (cfg().relay__info__description.size()) nip11["description"] = cfg().relay__info__description;
             if (cfg().relay__info__contact.size()) nip11["contact"] = cfg().relay__info__contact;
-            if (cfg().relay__info__pubkey.size()) nip11["pubkey"] = cfg().relay__info__pubkey;
+            if (cfg().relay__info__pubkey.size()) nip11["pubkey"] = maybeNpub(cfg().relay__info__pubkey);
             if (cfg().relay__info__icon.size()) nip11["icon"] = cfg().relay__info__icon;
             if (cfg().relay__info__banner.size()) nip11["banner"] = cfg().relay__info__banner;
-            if (cfg().relay__info__self.size()) nip11["self"] = cfg().relay__info__self;
+            if (cfg().relay__info__self.size()) nip11["self"] = maybeNpub(cfg().relay__info__self);
             if (cfg().relay__info__privacy.size()) nip11["privacy_policy"] = cfg().relay__info__privacy;
             if (cfg().relay__info__terms.size()) nip11["terms_of_service"] = cfg().relay__info__terms;
 
@@ -107,16 +132,42 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
         return std::string_view(rendered); // memory only valid until next call
     };
 
-    auto getLandingPageHttpResponse = [&supportedNips, ver = uint64_t(0), rendered = std::string("")]() mutable {
-        if (ver != cfg().version()) {
+    auto getLandingPageHttpResponse = [&supportedNips, &serverStart, ver = uint64_t(0), lastUpdate = uint64_t(0), rendered = std::string("")]() mutable {
+        if (ver != cfg().version() || (uint64_t)::time(nullptr) - lastUpdate > 3600) {
+            auto maybeUrl = [](std::string_view inp){
+                if (inp.starts_with("http://") || inp.starts_with("https://")) {
+                    std::string output = "<a href=\"";
+                    output += templarInternal::htmlEscape(inp, true);
+                    output += "\">";
+                    output += templarInternal::htmlEscape(inp, false);
+                    output += "</a>";
+                    return output;
+                }
+                return templarInternal::htmlEscape(inp, false);
+            };
+
+            auto maybeNpub = [](std::string_view inp){
+                try {
+                    if (inp.size() != 64) throw herr("invalid length for pubkey");
+                    return encodeBech32Simple("npub", hoytech::from_hex(inp));
+                } catch(...) {
+                }
+
+                return std::string(inp);
+            };
+
             struct {
                 std::string supportedNips;
                 std::string version;
                 uint64_t negentropy;
-            } ctx = { tao::json::to_string(supportedNips()), APP_GIT_VERSION, negentropy::PROTOCOL_VERSION - 0x60 };
+                std::function<std::string(std::string_view)> maybeUrl;
+                std::function<std::string(std::string_view)> maybeNpub;
+                uint64_t uptime;
+            } ctx = { tao::json::to_string(supportedNips()), APP_GIT_VERSION, negentropy::PROTOCOL_VERSION - 0x60, maybeUrl, maybeNpub, (uint64_t)::time(nullptr) - serverStart };
 
             rendered = preGenerateHttpRedirect("https://www.soloco.nl/", "text/html", ::strfrytmpl::landing(ctx).str);
             ver = cfg().version();
+            lastUpdate = ::time(nullptr);
         }
 
         return std::string_view(rendered); // memory only valid until next call
@@ -245,6 +296,8 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
            << " sliding=" << (compSlidingWindow ? 'Y' : 'N')
         ;
 
+        PrometheusMetrics::getInstance().activeConnections.inc();
+
         if (cfg().relay__enableTcpKeepalive) {
             int optval = 1;
             if (setsockopt(ws->getFd(), SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval))) {
@@ -264,12 +317,15 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
            << " (" << code << "/" << (message ? std::string_view(message, length) : "-") << ")"
            << " UP: " << renderSize(c->stats.bytesUp) << " (" << upComp << " compressed)"
            << " DN: " << renderSize(c->stats.bytesDown) << " (" << downComp << " compressed)"
+           << " Pending: " << renderSize(c->stats.pendingOutbound)
         ;
 
         tpIngester.dispatch(connId, MsgIngester{MsgIngester::CloseConn{connId}});
 
         connIdToConnection.erase(connId);
         delete c;
+
+        PrometheusMetrics::getInstance().activeConnections.dec();
 
         if (gracefulShutdown) {
             LI << "Graceful shutdown in progress: " << connIdToConnection.size() << " connections remaining";
@@ -298,10 +354,34 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
             if (it == connIdToConnection.end()) return;
             auto &c = *it->second;
 
+            // Track bytes still inside uWS's outbound path (either queued or
+            // partially sent). Increment before send(), decrement in the
+            // completion callback. The payload size is smuggled through the
+            // callback's user-data pointer so the callback captures nothing and
+            // decays to a plain function pointer.
+            const size_t payloadSize = payload.size();
+            c.stats.pendingOutbound += payloadSize;
+
             size_t compressedSize;
-            auto cb = [](uWS::WebSocket<uWS::SERVER> *webSocket, void *data, bool cancelled, void *reserved){};
-            c.websocket->send(payload.data(), payload.size(), opCode, cb, nullptr, true, &compressedSize);
-            c.stats.bytesUp += payload.size();
+
+            auto cb = [](uWS::WebSocket<uWS::SERVER> *ws, void *data, bool /*cancelled*/, void * /*reserved*/){
+                // uWS invokes this exactly once per send() on every path:
+                //   - immediate send success          (ws != nullptr, cancelled=false)
+                //   - immediate send failure          (ws != nullptr, cancelled=true)
+                //   - queued drain success            (ws != nullptr, cancelled=false)
+                //   - socket teardown (onEnd flush)   (ws == nullptr, cancelled=true)
+                // The teardown path runs after our onDisconnection handler has
+                // already logged and deleted the Connection, so we must not
+                // dereference anything via ws in that case. Gate on ws.
+                if (!ws) return;
+                auto *conn = static_cast<Connection*>(ws->getUserData());
+                if (!conn) return;
+                conn->stats.pendingOutbound -= reinterpret_cast<uintptr_t>(data);
+            };
+            c.websocket->send(payload.data(), payloadSize, opCode, cb,
+                              reinterpret_cast<void*>(static_cast<uintptr_t>(payloadSize)),
+                              true, &compressedSize);
+            c.stats.bytesUp += payloadSize;
             c.stats.bytesUpCompressed += compressedSize;
         };
 
