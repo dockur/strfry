@@ -143,7 +143,7 @@ jobs:
           cp strfry-router.conf ${{ github.event.repository.name }}/
       -
         name: Build Docker image
-        if: env.exists == 'false'
+        if: env.exists == 'xxx'
         uses: docker/build-push-action@v6
         with:
           context: ./${{ github.event.repository.name }}
@@ -176,7 +176,7 @@ jobs:
         if: env.exists == 'false'
         run: |
           cp Dockerfile.custom ${{ github.event.repository.name }}/Dockerfile
-          cp src/apps/relay/RelayWebsocket.cpp ${{ github.event.repository.name }}/src/apps/relay/RelayWebsocket.cpp
+          #cp src/apps/relay/RelayWebsocket.cpp ${{ github.event.repository.name }}/src/apps/relay/RelayWebsocket.cpp
       -
         name: Build custom image
         if: env.exists == 'false'
