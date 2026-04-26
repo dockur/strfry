@@ -21,18 +21,7 @@ static std::string preGenerateHttpResponse(const std::string &contentType, const
     return output;
 };
 
-static std::string preGenerateHttpRedirect(const std::string &location, const std::string &contentType, const std::string &content) {
-    std::string output = "HTTP/1.1 301 Moved Permanently\r\n";
-    output += std::string("Content-Type: ") + contentType + "\r\n";
-    output += "Access-Control-Allow-Origin: *\r\n";
-    output += "Connection: keep-alive\r\n";
-    output += "Server: strfry\r\n";
-    output += std::string("Location: ") + location + "\r\n";
-    output += std::string("Content-Length: ") + std::to_string(content.size()) + "\r\n";
-    output += "\r\n";
-    output += content;
-    return output;
-};
+
 
 void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
     struct Connection {
@@ -162,7 +151,7 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
                 uint64_t uptime;
             } ctx = { tao::json::to_string(supportedNips()), APP_GIT_VERSION, negentropy::PROTOCOL_VERSION - 0x60, maybeUrl, maybeNpub, (uint64_t)::time(nullptr) - serverStart };
 
-            rendered = preGenerateHttpRedirect("https://www.soloco.nl/", "text/html", ::strfrytmpl::landing(ctx).str);
+            rendered = preGenerateHttpResponse("text/html", ::strfrytmpl::landing(ctx).str);
             ver = cfg().version();
             lastUpdate = ::time(nullptr);
         }
