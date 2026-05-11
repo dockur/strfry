@@ -1,8 +1,11 @@
+# Built by Akito
+# npub1wprtv89px7z2ut04vvquscpmyfuzvcxttwy2csvla5lvwyj807qqz5aqle
+
 FROM alpine:3.18.3 AS build
 
-WORKDIR /build
+ENV TZ=Europe/London
 
-COPY . .
+WORKDIR /build
 
 RUN \
   apk --no-cache add \
@@ -19,12 +22,16 @@ RUN \
     lmdb-dev \
     flatbuffers-dev \
     libsecp256k1-dev \
-    zstd-dev \
-  && rm -rf /var/cache/apk/* \
-  && git submodule update --init \
-  && make setup-golpe \
-  && make clean \
-  && make -j4
+    zstd-dev
+
+COPY . .
+
+RUN git submodule update --init
+
+RUN make setup-golpe
+
+RUN --mount=type=cache,target=/build/.cache \
+    make -j4
 
 FROM alpine:3.18.3
 
@@ -38,23 +45,13 @@ RUN \
     libb2 \
     zstd \
     libressl \
-    bash \
-    curl \
-    python3 \
   && rm -rf /var/cache/apk/*
 
-HEALTHCHECK --interval=60s --retries=2 --timeout=10s CMD curl -ILfSs http://localhost:7777/ > /dev/null || exit 1
-
-COPY strfry.sh /app/strfry.sh
-COPY strfry.conf /etc/strfry.conf.default
-COPY write-policy.py /app/write-policy.py
-COPY strfry-router.conf /etc/strfry-router.conf
-
-RUN chmod +x /app/strfry.sh
-RUN chmod +x /app/write-policy.py
-
 COPY --from=build /build/strfry strfry
+COPY --from=build /build/strfry.conf strfry.conf
+COPY --from=build /build/strfry-db strfry-db
 
 EXPOSE 7777
 
-CMD ["/app/strfry.sh"]
+ENTRYPOINT ["/app/strfry"]
+CMD ["relay"]
