@@ -9,6 +9,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    exclude-paths:
+      - ".github/workflows/ubuntu.yml"
+      - ".github/workflows/docker-build.yml"
   - package-ecosystem: cargo
     directory: /
     schedule:
