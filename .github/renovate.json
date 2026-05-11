@@ -7,5 +7,9 @@
   },
    "docker-compose": {
     "enabled": false
-  }
+  },
+   "ignorePaths": [
+      ".github/workflows/ubuntu.yml",
+      ".github/workflows/docker-build.yml"
+  ]
 }
