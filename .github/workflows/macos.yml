@@ -17,7 +17,7 @@ jobs:
     name: A job to build and run strfry on macOS
     steps:
       - name: Checkout strfry
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
