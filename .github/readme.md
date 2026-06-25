@@ -39,7 +39,7 @@ docker run -it --rm --name strfry -p 7777:7777 -v "${PWD:-.}/strfry-db:/app/strf
 ```
 
 ## Stars 🌟
-[![Stars](https://starchart.cc/dockur/strfry.svg?variant=adaptive)](https://starchart.cc/dockur/strfry)
+[![Stargazers](https://raw.githubusercontent.com/star-stats/stars/refs/heads/data/charts/dockur-strfry.svg)](https://github.com/dockur/strfry/stargazers)
 
 [build_url]: https://github.com/dockur/strfry/
 [hub_url]: https://hub.docker.com/r/dockurr/strfry/
