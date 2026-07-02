@@ -16,7 +16,7 @@ Docker image of [strfry](https://github.com/hoytech/strfry), a relay for the [no
 
 ## Usage  🐳
 
-##### Via Docker Compose:
+##### Docker Compose:
 
 ```yaml
 services:
@@ -32,7 +32,7 @@ services:
     stop_grace_period: 2m
 ```
 
-##### Via Docker CLI:
+##### Docker CLI:
 
 ```bash
 docker run -it --rm --name strfry -p 7777:7777 -v "${PWD:-.}/strfry-db:/app/strfry-db" -v "${PWD:-.}/strfry.conf:/etc/strfry.conf" --stop-timeout 120 docker.io/dockurr/strfry
