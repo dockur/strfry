@@ -14,6 +14,12 @@
 
 Docker image of [strfry](https://github.com/hoytech/strfry), a relay for the [nostr](https://github.com/nostr-protocol/nostr) protocol.
 
+## Features ✨
+
+- Provides a Nostr relay server
+- Supports custom configuration
+- Lightweight Alpine-based image
+
 ## Usage  🐳
 
 ##### Docker Compose:
