@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-: "${ROUTER:=''}"
-: "${STREAMS:=''}"
-: "${COMPACT:=''}"
+: "${ROUTER:=}"
+: "${STREAMS:=}"
+: "${COMPACT:=}"
 
 trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM EXIT
 
