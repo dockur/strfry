@@ -43,12 +43,31 @@ compactDatabase() {
   lock="./strfry-db/lock.mdb"
 
   if [ -f "$db" ]; then
-    ./strfry compact - > "$db.compacted"
-    [ -f "$lock" ] && rm -f "$lock"
-    mv -f "$db.compacted" "$db"
+
+    if ! ./strfry compact - > "$db.compacted"; then
+      echo "Error: failed to compact database."
+      rm -f "$db.compacted"
+      return 1
+    fi
+
+    if [ -f "$lock" ] && ! rm -f "$lock"; then
+      echo "Error: failed to remove database lock file."
+      rm -f "$db.compacted"
+      return 1
+    fi
+
+    if ! mv -f "$db.compacted" "$db"; then
+      echo "Error: failed to replace database with compacted copy."
+      rm -f "$db.compacted"
+      return 1
+    fi
+
   else
     echo "Error: database file $db not found.."
+    return 1
   fi
+
+  return 0
 }
 
 startRelay() {
@@ -85,7 +104,7 @@ prepareConfig
 
 cd /app
 
-compactDatabase
+compactDatabase || exit 1
 
 startRelay
 startRouter
