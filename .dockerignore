@@ -6,5 +6,21 @@ strfry
 *.Dockerfile
 Dockerfile
 .gitignore
+.dockerignore
+.github
+.gitlab-ci.yml
+.gitmodules
+Dockerfile.archive
+ubuntu.Dockerfile
+compose.yml
+compose.yaml
+docker-compose.yml
+docker-compose.yaml
+sample-docker-compose.yml
+renovate.json
 
-
+docs
+test
+CHANGES
+LICENSE
+TODO
