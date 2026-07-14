@@ -6,6 +6,8 @@ strfry
 *.Dockerfile
 Dockerfile
 .gitignore
+
+
 .dockerignore
 .github
 .gitlab-ci.yml
