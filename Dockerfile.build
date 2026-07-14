@@ -43,7 +43,8 @@ RUN \
     python3 \
   && rm -rf /var/cache/apk/*
 
-HEALTHCHECK --interval=60s --retries=2 --timeout=10s CMD curl -ILfSs http://localhost:7777/ > /dev/null || exit 1
+HEALTHCHECK --interval=60s --retries=2 --timeout=10s \
+    CMD ["curl", "-ILfSs", "http://localhost:7777/"]
 
 COPY strfry.sh /app/strfry.sh
 COPY strfry.conf /etc/strfry.conf.default
