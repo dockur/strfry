@@ -1,7 +1,7 @@
 # Built by Akito
 # npub1wprtv89px7z2ut04vvquscpmyfuzvcxttwy2csvla5lvwyj807qqz5aqle
 
-FROM alpine:3.18.3 AS build
+FROM alpine:3.24.1 AS build
 
 ENV TZ=Europe/London
 
@@ -33,7 +33,7 @@ RUN make setup-golpe
 RUN --mount=type=cache,target=/build/.cache \
     make -j4
 
-FROM alpine:3.18.3
+FROM alpine:3.24.1
 
 WORKDIR /app
 
