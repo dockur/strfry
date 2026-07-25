@@ -1,17 +1,28 @@
 version: 2
+
 updates:
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     exclude-paths:
       - ".github/workflows/ubuntu.yml"
       - ".github/workflows/docker-build.yml"
+
   - package-ecosystem: cargo
     directory: /
     schedule:
