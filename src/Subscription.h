@@ -2,6 +2,7 @@
 
 #include <parallel_hashmap/phmap_utils.h>
 
+#include "golpe.h"
 #include "filters.h"
 
 

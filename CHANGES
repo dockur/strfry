@@ -14,6 +14,14 @@ next
     oversized events could fill disks with log data.
   * Truncate large messages in sync error/warning logs to 512 bytes.
 
+1.1.2
+  * Fix crashing bug where a negentropy subscription is created with the same
+    sub ID while the existing query was still processing. (reported by etemiz)
+  * Fix a memory DoS in uWebSockets where an attacker can continue appending
+    websocket fragments under the max payload size. (reported by etemiz)
+  * Fix a logic bug in WSConnection that sometimes prevents stream and
+    sync commands from reconnecting after connection failure. (kojiran)
+
 1.1.1
   * Fix possible crashing bug in uWebSockets library (JeffG)
 
