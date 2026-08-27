@@ -251,6 +251,8 @@ void RelayServer::ingesterProcessReq(lmdb::txn &txn, RelayServerCtx &rsctx, uint
         } else if (countOnly && isAuthed) {
             sendClosedError(connId, outSubIdStr, "count-failed: can only count events you are involved in");
         } else {
+            auto challenge = it->second.challengeSv();
+            sendAuthChallenge(connId, challenge);
             sendClosedError(connId, outSubIdStr, "auth-required: requested filter requires authentication");
         }
         return;
@@ -352,12 +354,15 @@ void RelayServer::ingesterProcessNegentropy(lmdb::txn &txn, RelayServerCtx &rsct
             bool hasSession = it != rsctx.connIdToAuthSession.end();
             bool isAuthed = hasSession && !it->second.authed.isNull();
             if (!isAuthed) {
+                std::string challenge;
                 if (!hasSession) {
-                    auto challenge = rsctx.challengeGenerator.get();
+                    challenge = rsctx.challengeGenerator.get();
                     rsctx.connIdToAuthSession.emplace(connId, challenge);
                     LI << "[" << connId << "] Requesting initial AUTH";
-                    sendAuthChallenge(connId, challenge);
+                } else {
+                    challenge = it->second.challengeSv();
                 }
+                sendAuthChallenge(connId, challenge);
                 PROM_INC_RELAY_MSG("NEG-ERR");
                 sendToConn(connId, tao::json::to_string(tao::json::value::array({
                     "NEG-ERR",
