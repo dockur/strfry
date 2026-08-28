@@ -12,7 +12,6 @@
 #include <openssl/sha.h>
 
 #include "golpe.h"
-#include "global.h"
 
 
 

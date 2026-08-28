@@ -1,7 +1,6 @@
 #pragma once
 
 #include "config.h"
-#include "global.h"
 #include "golpe.h"
 
 #include "jsonParseUtils.h"

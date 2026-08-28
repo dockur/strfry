@@ -1,12 +1,12 @@
 #pragma once
 
 #include <string_view>
+
 #include "PackedEvent.h"
-#include "Bytes32.h"
 #include "config.h"
 #include "filters.h"
-#include "global.h"
-#include "parallel_hashmap/phmap.h"
+
+#include "golpe.h"
 
 struct ReadRestrictor {
 private:
