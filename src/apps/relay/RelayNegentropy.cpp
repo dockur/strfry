@@ -96,7 +96,7 @@ void RelayServer::runNegentropy(ThreadPool<MsgNegentropy>::Thread &thr) {
         std::string resp;
 
         try {
-            Negentropy ne(storage, 500'000);
+            Negentropy<negentropy::StorageBase> ne(storage, 500'000);
             resp = ne.reconcile(msg);
         } catch (std::exception &e) {
             LI << "[" << connId << "] Error parsing negentropy message: " << e.what();
